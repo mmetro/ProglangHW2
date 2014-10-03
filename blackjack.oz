@@ -10,7 +10,7 @@ end
 
 declare Rand Init 
 {NewRand Rand Init _}
-{Init 6969}
+{Init 6967}
 
 declare
 fun {ShuffleFromIndex I L}
