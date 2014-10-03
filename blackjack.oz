@@ -10,7 +10,7 @@ end
 
 declare Rand Init 
 {NewRand Rand Init _}
-{Init 6967}
+{Init 6969}
 
 declare
 fun {ShuffleFromIndex I L}
@@ -18,7 +18,8 @@ fun {ShuffleFromIndex I L}
       L
    else
       local R NI NR L1 L2 L3 LL in
-	 R={Rand} mod 52
+	 R=({Rand} mod 52)+1
+	 {Browse R}
 	 NI = {List.nth L I}
 	 NR = {List.nth L R}
 	 if R==I then
