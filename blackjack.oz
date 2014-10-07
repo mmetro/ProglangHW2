@@ -13,13 +13,39 @@ declare Rand Init
 {Init 10}
 
 declare
+fun {CardValue C}
+   local Cardval = ((C-1) mod 13)+1 in
+      if Cardval>=10 then
+	 10
+      else
+	 Cardval
+      end
+   end
+end
+
+declare
+fun {CardValueCompare C1 C2}
+   {CardValue C1} > {CardValue C2}
+end
+
+declare
 fun {HandValueRecurse Hand Sum}
-   19
+   case Hand of H|T then
+      local Cardval={CardValue H} in
+	 if {And Sum=<10 {And Cardval==1 {List.length Hand}==1}} then
+	    {HandValueRecurse T Sum+11}
+	 else
+	    {HandValueRecurse T Sum+Cardval}
+	 end
+      end
+   else
+      Sum
+   end
 end
 
 declare
 fun {HandValue Hand}
-   {HandValueRecurse Hand 0}
+   {HandValueRecurse {List.sort Hand CardValueCompare} 0}
 end
 
 declare
@@ -52,26 +78,19 @@ fun {ShuffleFromIndex I L Length}
    end
 end
 
-%Return dealt card|Deck|DiscardPile
 declare
 fun {DealCard Deck DiscardPile}
    case Deck of H|T then
       H|T|DiscardPile
    else
-      {Browse 'Have to reshuffle'}
-      case {ShuffleFromIndex 0 DiscardPile {List.length DiscardPile}} of H|T then
-	 {Browse 'reshuffled properly'}
-	 H|T|nil
+      case {ShuffleFromIndex 1 DiscardPile {List.length DiscardPile}} of H|T then
+	 H|{List.append Deck T}|nil
       else
-	 {Browse 'couldnt reshuffle'}
 	 nil|nil|nil
       end
    end
 end
 
-%The dealer will be represented as the last player
-
-%return PlayerHands|Deck|DiscardPile
 declare
 fun {DealRecurse Deck DiscardPile NumPlayers PlayerHands CurrPlayer CardsDealtEach}
    if CardsDealtEach==2 then
@@ -109,8 +128,6 @@ fun {EmptyHands NumPlayers}
    {EmptyHandsRecurse [[nil]] NumPlayers}
 end
 
-%wrapper for the recursive initial deal
-%return PlayerHands|Deck|DiscardPile
 declare
 fun {SimulateDeal Deck DiscardPile NumPlayers}
    {DealRecurse Deck DiscardPile NumPlayers {EmptyHands NumPlayers} 1 0}
@@ -136,13 +153,19 @@ end
 declare
 fun {SimulatePlayer Deck DiscardPile Hand Bet PlayerMoney}
    local Move={PlayerMove Hand} in
-      if {Or Move==hit {And Move==doubledown (PlayerMoney<(Bet*2))}} then
+      if Move==hit then
 	 case {DealCard Deck DiscardPile} of C|D|DP then
 	    {SimulatePlayer D DP {List.append Hand [C]} Bet PlayerMoney}
 	 end
       elseif Move==doubledown then
-	 case {DealCard Deck DiscardPile} of C|D|DP then
-	    D|DP|{List.append Hand [C]}|Bet*2
+	 if PlayerMoney<(Bet*2) then
+	    case {DealCard Deck DiscardPile} of C|D|DP then
+	       {SimulatePlayer D DP {List.append Hand [C]} Bet PlayerMoney}
+	    end
+	 else
+	    case {DealCard Deck DiscardPile} of C|D|DP then
+	       D|DP|{List.append Hand [C]}|Bet*2
+	    end
 	 end
       elseif Move==stay then
 	 Deck|DiscardPile|Hand|Bet
@@ -154,38 +177,34 @@ fun {SimulatePlayer Deck DiscardPile Hand Bet PlayerMoney}
 end
 
 declare
-fun {SimulatePlayers Deck DiscardPile FinishedHands UnfinishedHands FinalBets OriginalBets B PlayerMoney}
-   {Browse UnfinishedHands}
-   {Browse OriginalBets}
-   {Browse PlayerMoney}
-   case UnfinishedHands of H|T then
-      case OriginalBets of H1|T1 then
-	 case PlayerMoney of H2|T2 then
-	    case {SimulatePlayer Deck DiscardPile H H1 H2} of D|DP|Hand|B then
-	       {Browse 'ooop'}
-	       {SimulatePlayers D DP {List.append FinishedHands [Hand]} T {List.append FinalBets [B]} T1 B T2}
-	    end
+fun {SimulatePlayers Deck DiscardPile FinishedHands UnfinishedHands FinalBets OriginalBets Bet PlayerMoney}
+   case PlayerMoney of H2|T2 then
+      if H2>=Bet then
+	 case UnfinishedHands of H|T then
+	    case OriginalBets of H1|T1 then
+	       
+	       case {SimulatePlayer Deck DiscardPile H H1 H2} of D|DP|Hand|B then
+		  {SimulatePlayers D DP {List.append FinishedHands [Hand]} T {List.append FinalBets [B]} T1 Bet T2}
+	       end
+	    end	 
 	 end
-      end	 
-   else
-      Deck|DiscardPile|{List.drop FinishedHands 1}|{List.drop FinalBets 1}
-   end
-end
-
-declare
-fun {SimulateDealerRecurse Deck DiscardPile Hand}
-   if {HandValue Hand}<17 then
-      case {DealCard Deck DiscardPile} of C|D|DP then
-	 {SimulateDealerRecurse D DP {List.append Hand [C]}}
+	 
+      else
+	 {SimulatePlayers Deck DiscardPile FinishedHands UnfinishedHands FinalBets OriginalBets Bet T2}
       end
    else
-      Deck|DiscardPile|{List.drop Hand 1}
+      Deck|DiscardPile|{List.drop FinishedHands 1}|{List.drop FinalBets 1} 
    end
 end
-
 declare
-fun {SimulateDealer Deck DiscardPile}
-   {SimulateDealerRecurse Deck DiscardPile [nil]}
+fun {SimulateDealer Deck DiscardPile Hand}
+   if {HandValue Hand}<17 then
+      case {DealCard Deck DiscardPile} of C|D|DP then
+	 {SimulateDealer D DP {List.append Hand [C]}}
+      end
+   else
+      Deck|DiscardPile|Hand
+   end
 end
 
 declare
@@ -203,26 +222,34 @@ fun {BetList NumPlayers BetAmount}
 end
 
 declare
-fun {CalcMoneyRecurse OriginalMoney FinalMoney Bets Hands DealerHand DealerNet}
+fun {CalcMoneyRecurse OriginalMoney FinalMoney BetMin Bets Hands DealerHand DealerNet}
    case OriginalMoney of HMoney|TMoney then
-      case Bets of HBets|TBets then
-	 case Hands of HHands|THands then
-	    local PlayerVal={HandValue HHands} DealerVal={HandValue DealerHand} in
-	       if PlayerVal>21 then
-		  {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney - HBets]} TBets THands DealerHand DealerNet+HBets}
-	       elseif DealerVal>21 then
-		  {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + HBets]} TBets THands DealerHand DealerNet-HBets}
-	       else
-		  if PlayerVal>DealerVal then
+      if HMoney<BetMin then
+	 {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney]} BetMin Bets Hands DealerHand DealerNet}
+      else
+	 case Bets of HBets|TBets then
+	    case Hands of HHands|THands then
+	       local PlayerVal={HandValue HHands} DealerVal={HandValue DealerHand} in
+		  if PlayerVal>21 then
+		     {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney - HBets]} BetMin TBets THands DealerHand DealerNet+HBets}
+		  elseif DealerVal>21 then
 		     if PlayerVal==21 then
-			{CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + (HBets*2)]} TBets THands DealerHand DealerNet-(HBets*2)}
+			{CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + (HBets*2)]} BetMin TBets THands DealerHand DealerNet-(HBets*2)}
 		     else
-			{CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + HBets]} TBets THands DealerHand DealerNet-HBets}
+			{CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + HBets]} BetMin TBets THands DealerHand DealerNet-HBets}
 		     end
-		  elseif PlayerVal==DealerVal then
-		     {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney]} TBets THands DealerHand DealerNet}
 		  else
-		     {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney - HBets]} TBets THands DealerHand DealerNet+HBets}
+		     if PlayerVal>DealerVal then
+			if PlayerVal==21 then
+			   {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + (HBets*2)]} BetMin TBets THands DealerHand DealerNet-(HBets*2)}
+			else
+			   {CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney + HBets]} BetMin TBets THands DealerHand DealerNet-HBets}
+			end
+		     elseif PlayerVal==DealerVal then
+			{CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney]} BetMin TBets THands DealerHand DealerNet}
+		     else
+			{CalcMoneyRecurse TMoney {List.append FinalMoney [HMoney - HBets]} BetMin TBets THands DealerHand DealerNet+HBets}
+		     end
 		  end
 	       end
 	    end
@@ -234,20 +261,70 @@ fun {CalcMoneyRecurse OriginalMoney FinalMoney Bets Hands DealerHand DealerNet}
 end
 
 declare
-fun {CalculateMoney PlayerMoney Bets Hands DealerHand}
-   {CalcMoneyRecurse PlayerMoney [nil] Bets Hands DealerHand 0}
+fun {CalculateMoney PlayerMoney BetMin Bets Hands DealerHand}
+   {CalcMoneyRecurse PlayerMoney [nil] BetMin Bets Hands DealerHand 0}
 end
 
 declare
 fun {SimulateRound Deck DiscardPile NumPlayers PlayerBalances Bet}
-   case {SimulateDeal Deck DiscardPile NumPlayers} of PH|D|DP then
-      case {SimulatePlayers D DP [nil] PH [nil] {BetList NumPlayers Bet} Bet PlayerBalances} of Deck2|DiscardPile2|FinishedHands|FinalBets then
-	 case {SimulateDealer Deck2 DiscardPile2} of Deck3|DiscardPile3|DealerHand then
-	    case {CalculateMoney PlayerBalances FinalBets FinishedHands DealerHand} of FinalMoney|DealerNet then
-	       Deck3|{List.flatten DiscardPile3|PH|DealerHand}|FinalMoney|DealerNet
+   case {SimulateDeal Deck DiscardPile NumPlayers+1} of PH|D|DP then
+      case {SimulatePlayers D DP [nil] {List.take PH NumPlayers} [nil] {BetList NumPlayers Bet} Bet PlayerBalances} of Deck2|DiscardPile2|FinishedHands|FinalBets then
+	 case {SimulateDealer Deck2 DiscardPile2 {List.last PH}} of Deck3|DiscardPile3|DealerHand then
+	    case {CalculateMoney PlayerBalances Bet FinalBets FinishedHands DealerHand} of FinalMoney|DealerNet then
+	       
+	       Deck3|{List.flatten DealerHand|{List.reverse FinishedHands}|DiscardPile3}|FinalMoney|DealerNet
 	    end
 	 end
       end
+   end
+end
+
+declare
+fun {RemainingPlayersRecurse PlayerBalances Bet NumRemaining}
+   case PlayerBalances of H|T then
+      if H>=Bet then
+	 {RemainingPlayersRecurse T Bet NumRemaining+1}
+      else
+	 {RemainingPlayersRecurse T Bet NumRemaining}
+      end
+   else
+      NumRemaining
+   end
+end
+
+declare
+fun {RemainingPlayers PlayerBalances Bet}
+   {RemainingPlayersRecurse PlayerBalances Bet 0}
+end
+
+declare
+fun {IncrementRoundsPlayedRecurse PlayerMoney MinBet RoundsPlayedLeft RoundsPlayedRight}
+   case RoundsPlayedRight of H|T then
+      case PlayerMoney of H1|T1 then
+	 if H1>=MinBet then
+	    {IncrementRoundsPlayedRecurse T1 MinBet {List.append RoundsPlayedLeft [H+1]} T}
+	 else
+	    {IncrementRoundsPlayedRecurse T1 MinBet {List.append RoundsPlayedLeft [H]} T}
+	 end
+      end
+   else
+      {List.drop RoundsPlayedLeft 1}
+   end
+end
+
+declare
+fun {IncrementRoundsPlayed PlayerMoney MinBet RoundsPlayed}
+   {IncrementRoundsPlayedRecurse PlayerMoney MinBet [nil] RoundsPlayed}
+end
+   
+declare
+fun {Simulate Deck DiscardPile NumPlayers RoundsPlayed PlayerBalances Bet RemainingRounds DealerMoney}
+   if {And RemainingRounds>0 NumPlayers>0} then
+      case {SimulateRound Deck DiscardPile NumPlayers PlayerBalances Bet} of D|DP|FinalBal|DealerNet then
+	 {Simulate D DP {RemainingPlayers FinalBal Bet} {IncrementRoundsPlayed PlayerBalances Bet RoundsPlayed} FinalBal Bet RemainingRounds-1 DealerMoney+DealerNet}
+      end
+   else
+      DealerMoney|RoundsPlayed|PlayerBalances
    end
 end
 
@@ -265,20 +342,38 @@ fun {StarterMoney NumPlayers Amount}
    {StarterMoneyRecurse NumPlayers Amount [nil]}
 end
 
-{Browse {StarterMoney 6 44}}
+declare
+fun {MakeTupleRecurse Dealer RoundsList MoneyList CombinedList}
+   case RoundsList of H|T then
+      case MoneyList of H1|T1 then
+	 {MakeTupleRecurse Dealer T T1 {List.append CombinedList [H#H1]}}
+      end
+   else
+      game(Dealer CombinedList)
+   end
+end
 
-{Browse {SimulateRound {ShuffleFromIndex 1 {List.number 1 52 1} 52} [nil] 5 {StarterMoney 5 50} 5}} 
-
-%case {SimulateDeal {ShuffleFromIndex 1 {List.number 1 52 1} 52} nil 4} of H|D|DP then
-%   {Browse {SimulatePlayers D DP [nil] H [nil] [30 30 30 30] 30}}
-%end
+declare
+fun {MakeTuple Dealer RoundsList MoneyList}
+   case RoundsList of H|T then
+      case MoneyList of H1|T1 then
+	 {MakeTupleRecurse Dealer T T1 [H#H1]}
+      end
+   end
+end
 
 declare
 fun {BlackJack S N M B R}
    {Init S}
-   4
+   case {Simulate {ShuffleFromIndex 1 {List.number 1 52 1} 52} [nil] N {BetList N 0} {StarterMoney N M} B R 0} of D|R|M then
+      {MakeTuple D R M}
+   end
 end
 
-%{Browse {List.number 1 52 1}} 
+{Browse {BlackJack 10 2 10 2 2}}
 
-   
+{Browse {BlackJack 15 3 10 9 2}}
+
+{Browse {BlackJack 22 5 10 4 6}}
+
+{Browse {BlackJack 13 5 30 4 10}}
